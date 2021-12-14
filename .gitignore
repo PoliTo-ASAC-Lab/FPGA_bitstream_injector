@@ -1,5 +1,6 @@
-# Excluding generated faulty bistreams and results
+# Excluding generated faulty bistreams, results and reports
 faulty_bitstreams
+fi_reports
 
 # Excluding executable and bitstream file
 *.elf
