@@ -1,0 +1,9 @@
+# Excluding generated faulty bistreams and results
+faulty_bitstreams
+
+# Excluding executable and bitstream file
+*.elf
+*.bit
+
+# Excluding __pycache__ folders
+__pycache__
