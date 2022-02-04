@@ -203,3 +203,113 @@ def functional_analysis(injection_num, report_filepath):
     out_file.write(f"\nhang_processes_bitstreams= {hang_process_l}")
 
     out_file.close()
+
+def functional_analysis_FreeRTOS(injection_num, report_filepath):
+    """
+    Performs thr functional analysis by comparing the CRC32 hashes of file
+    ./faulty_bitstreams/uB_results/golden_uB_result.dat
+    with file
+    ./bitflipped_binaries/results/uB_result_{i}.dat
+    """
+
+    """
+    Output Classification:
+        1) Correct: execution ends with correct results
+        2) Hang: execution stops without exception occurrence
+        3) Exception: execution stops with exception occurrence
+            Example of exception signature: "---- Exception: XEXC_ID_FSL ----"
+        4) Faulty/SDE: execution terminates with faulty results 
+    """
+    verbose_report = True
+    faulty_cnt = 0
+    faulty_l = [] 
+    hang_process_cnt = 0
+    hang_process_l = []
+    aborted_cnt = 0
+    aborted_l = []
+    exceptions_dict = {
+        "XEXC_ID_FSL" : 0,
+        "XEXC_ID_UNALIGNED_ACCESS" : 0,
+        "XEXC_ID_ILLEGAL_OPCODE" : 0,
+        "XEXC_ID_M_AXI_I_EXCEPTION_or_XEXC_ID_IPLB_EXCEPTION" : 0,
+        "XEXC_ID_M_AXI_D_EXCEPTION_or_XEXC_ID_DPLB_EXCEPTION" : 0,
+        "XEXC_ID_DIV_BY_ZERO" : 0,
+        "XEXC_ID_STACK_VIOLATION_or_XEXC_ID_MMU" : 0,
+        "XEXC_ID_FPU" : 0
+    }
+    exception_process_l = []
+    exception_cnt = 0
+
+    # Reading list of aborted injections (due to link failure or anything else)
+    aborted_injections_file_path = "./faulty_bitstreams/uB_results/aborted.txt"
+    if (path.exists(aborted_injections_file_path)):
+        aborted_injections_file = open(aborted_injections_file_path, "r+")
+        aborted_injections_file_content = aborted_injections_file.read()
+        for proc_num in aborted_injections_file_content.splitlines():
+            if proc_num != "":
+                aborted_cnt += 1
+                aborted_l.append(int(proc_num))
+
+            
+    # Checking completion (TBD: and correctness)
+    # Golden output
+    gold_res_filename = f"./faulty_bitstreams/uB_results/golden_uB_result.dat"
+    done_flag_1 = False
+    done_flag_2 = False
+    golden_content = open(gold_res_filename,"r+")
+    for line in golden_content.read().splitlines():
+        splitted_line = line.split()
+        print
+        if (not done_flag_1) and ("DONE_1" in splitted_line):
+            done_flag_1 = True
+        if (not done_flag_2) and ("DONE_2" in splitted_line):
+            done_flag_2 = True
+        if done_flag_1 and done_flag_2:
+            print("\n\t\t[#]#[#] Golden content seems correct!")
+            break
+
+    # Faulty outputs
+    for i in range(0,int(injection_num)):
+        faulty_res_filename = f"./faulty_bitstreams/uB_results/uB_result_{i}.dat"
+        done_flag_1 = False
+        done_flag_2 = False
+        faulty_content = open(faulty_res_filename,"r+")
+        for line in faulty_content.read().splitlines():
+            splitted_line = line.split()
+            if (not done_flag_1) and ("DONE_1" in splitted_line):
+                done_flag_1 = True
+            if (not done_flag_2) and ("DONE_2" in splitted_line):
+                done_flag_2 = True
+            if done_flag_1 and done_flag_2:
+                print(f"\t\t[#]#[#] exec#{i} -> OK")
+                break
+            
+            # Example of exception signature: "---- Exception: XEXC_ID_FSL ----"
+            if "Exception:" in splitted_line:
+                exc_text = splitted_line[2]
+                exceptions_dict[exc_text] += 1
+                print(f"\t\t[#]#[#] exec#{i} -> EXCEPTION")
+                exception_cnt+=1
+                exception_process_l.append(int(i))
+                break
+
+        if (not done_flag_1) or (not done_flag_2):
+            print(f"\t\t[#]#[#] exec#{i} -> HANG")
+            break
+
+
+    # ******* Printing the results *******
+    out_file = open(report_filepath,"a+")
+    out_file.write(f"\t--FUNCTIONAL_ANALYSIS--")
+    out_file.write(f"\nperformed_injections= {injection_num-aborted_cnt}")    
+    out_file.write(f"\n\t[aborted_injections= {aborted_cnt}]")
+    out_file.write(f"\ncorrect_results= {injection_num -aborted_cnt -faulty_cnt -hang_process_cnt -exception_cnt}")    
+    out_file.write(f"\nfaulty_results= {faulty_cnt}")
+    out_file.write(f"\nfaulty_results_bitstreams= {faulty_l}")    
+    out_file.write(f"\nhang_processes= {hang_process_cnt}")
+    out_file.write(f"\nhang_processes_bitstreams= {hang_process_l}")
+    out_file.write(f"\nexceptions= {exception_cnt}")
+    for exc_text in exceptions_dict.keys():
+        out_file.write(f"\nException[ {exc_text} ]= {exceptions_dict[exc_text]}")
+
+    out_file.close()

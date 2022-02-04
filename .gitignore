@@ -1,10 +1,14 @@
 # Excluding generated faulty bistreams, results and reports
 faulty_bitstreams
 fi_reports
+.Xil
+drivers
 
 # Excluding executable and bitstream file
 *.elf
 *.bit
-
+*.mmi
+*.xsa 
+out_log.txt
 # Excluding __pycache__ folders
 __pycache__
