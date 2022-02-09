@@ -8,6 +8,7 @@ import time
 import shlex
 import re
 import datetime
+import wexpect
 
 from fi_lib.bitman import bitflip
 from fi_lib.crc32 import CRC32_hash
@@ -65,7 +66,7 @@ def bitflip_injection(golden_bitstream, injection_num):
     with open(f"{golden_bitstream}", "rb") as golden_file:
         golden_content = golden_file.read()
     golden_file.close()
-
+    i=0
     for i in range(0, int(injection_num)):
 
         # Selective Injection Coordinates
@@ -142,6 +143,63 @@ def bitstream_analyzer(bitstream):
     #print(f"\n\nending --> {bitstream_content[end_byte:end_byte+16].hex()}") #_debug
     return start_byte, end_byte
 
+def XSCTcommunicate(child, command, debug=False):
+    #!!!! child must be a wexpect.spawn object
+    xsct_prompt = ['XSCT_DONE', 'XSCT_ERROR']
+    child.sendline(command)
+    if debug: 
+        print(child.before)
+    xsct_reply_id = child.expect(xsct_prompt)
+    if xsct_reply_id != 0: #an error occurred
+        print(f"Error occurred in XSCT while trying to execute:\n\t{command}")
+        return False
+    else:
+        print(f"\n\t\t\t XSCT replied: {xsct_prompt[xsct_reply_id]}")
+        return True
+
+def FPGA_prog_and_exec(XSCTproc, app_listener, bitstream_file, HW_file, ELF_file, app_out_file, DEBUG=False):
+    
+    if DEBUG: print("Exec1")
+    if not XSCTcommunicate(XSCTproc, 'if { [catch {targets -set -nocase -filter {name =~ "*microblaze*#0" && bscan=="USER2"} }] } {join [concat "XSCT_" "ERROR"] ""} else { join [concat "XSCT_" "DONE"] ""}'): return False# selecting microblaze as target
+    
+    if DEBUG: time.sleep(2)
+    if DEBUG: print("Exec2")
+    XSCTcommunicate(XSCTproc, 'rst -processor; join [concat "XSCT_" "DONE"] ""')#' puts "XSCT_DONE"') # reset of the system
+
+    if DEBUG: time.sleep(2)
+    XSCTcommunicate(XSCTproc, 'after 1000; join [concat "XSCT_" "DONE"] ""')
+
+    if DEBUG: time.sleep(2)
+    if DEBUG: print("Exec3")
+    if not XSCTcommunicate(XSCTproc, f'while {{ [catch {{fpga -file "{bitstream_file}" -no-revision-check -skip-compatibility-check}}] }} {{ rst -system }}; join [concat "XSCT_" "DONE"] "" '): return False # programming the FPGA
+
+    if DEBUG: time.sleep(2)
+    if DEBUG: print("Exec4")
+    if not XSCTcommunicate(XSCTproc, f'while {{ [catch {{dow {ELF_file}}}] }} {{rst -system}}; join [concat "XSCT_" "DONE"] ""'): return False# loading ELF file
+    
+    if DEBUG: time.sleep(2)
+    if DEBUG: print("Exec5")
+    app_listener.do_async_listen(app_out_file) # starting app_listener
+    
+    if DEBUG: time.sleep(2)
+    if DEBUG: print("Exec6")
+    if not XSCTcommunicate(XSCTproc,'if { [catch { con }] } {join [concat "XSCT_" "ERROR"] ""} else { join [concat "XSCT_" "DONE"] ""}'): return False # starting app execution
+    
+    app_listener.async_listener_thread.join() # waiting app conclusion (seeking end keyword) or timeout
+    
+    
+    if DEBUG: time.sleep(2)
+    if DEBUG: print("Exec7")
+    if not XSCTcommunicate(XSCTproc, 'if { [catch { rst -processor }] } {join [concat "XSCT_" "ERROR"] ""} else { join [concat "XSCT_" "DONE"] ""}'): return False # reset of the system
+
+    if DEBUG: time.sleep(2)
+    if DEBUG: print("Exec8")
+    app_listener.connection.reset_output_buffer()
+    app_listener.connection.reset_input_buffer()
+
+
+    return True
+    
 def functional_analysis(injection_num, report_filepath):
     """
     Performs thr functional analysis by comparing the CRC32 hashes of file
@@ -204,7 +262,7 @@ def functional_analysis(injection_num, report_filepath):
 
     out_file.close()
 
-def functional_analysis_FreeRTOS(injection_num, report_filepath):
+def functional_analysis_FreeRTOS(injection_num, report_filepath, aborted_l):
     """
     Performs thr functional analysis by comparing the CRC32 hashes of file
     ./faulty_bitstreams/uB_results/golden_uB_result.dat
@@ -220,13 +278,15 @@ def functional_analysis_FreeRTOS(injection_num, report_filepath):
             Example of exception signature: "---- Exception: XEXC_ID_FSL ----"
         4) Faulty/SDE: execution terminates with faulty results 
     """
+    print(aborted_l)
+
     verbose_report = True
     faulty_cnt = 0
     faulty_l = [] 
     hang_process_cnt = 0
     hang_process_l = []
-    aborted_cnt = 0
-    aborted_l = []
+    #aborted_l = []
+    aborted_cnt = len(aborted_l) 
     exceptions_dict = {
         "XEXC_ID_FSL" : 0,
         "XEXC_ID_UNALIGNED_ACCESS" : 0,
@@ -270,32 +330,33 @@ def functional_analysis_FreeRTOS(injection_num, report_filepath):
 
     # Faulty outputs
     for i in range(0,int(injection_num)):
-        faulty_res_filename = f"./faulty_bitstreams/uB_results/uB_result_{i}.dat"
-        done_flag_1 = False
-        done_flag_2 = False
-        faulty_content = open(faulty_res_filename,"r+")
-        for line in faulty_content.read().splitlines():
-            splitted_line = line.split()
-            if (not done_flag_1) and ("DONE_1" in splitted_line):
-                done_flag_1 = True
-            if (not done_flag_2) and ("DONE_2" in splitted_line):
-                done_flag_2 = True
-            if done_flag_1 and done_flag_2:
-                print(f"\t\t[#]#[#] exec#{i} -> OK")
-                break
-            
-            # Example of exception signature: "---- Exception: XEXC_ID_FSL ----"
-            if "Exception:" in splitted_line:
-                exc_text = splitted_line[2]
-                exceptions_dict[exc_text] += 1
-                print(f"\t\t[#]#[#] exec#{i} -> EXCEPTION")
-                exception_cnt+=1
-                exception_process_l.append(int(i))
-                break
+        if i not in aborted_l:
+            faulty_res_filename = f"./faulty_bitstreams/uB_results/uB_result_{i}.dat"
+            done_flag_1 = False
+            done_flag_2 = False
+            faulty_content = open(faulty_res_filename,"r+")
+            for line in faulty_content.read().splitlines():
+                splitted_line = line.split()
+                if (not done_flag_1) and ("DONE_1" in splitted_line):
+                    done_flag_1 = True
+                if (not done_flag_2) and ("DONE_2" in splitted_line):
+                    done_flag_2 = True
+                if done_flag_1 and done_flag_2:
+                    print(f"\t\t[#]#[#] exec#{i} -> OK")
+                    break
+                
+                # Example of exception signature: "---- Exception: XEXC_ID_FSL ----"
+                if "Exception:" in splitted_line:
+                    exc_text = splitted_line[2]
+                    exceptions_dict[exc_text] += 1
+                    print(f"\t\t[#]#[#] exec#{i} -> EXCEPTION")
+                    exception_cnt+=1
+                    exception_process_l.append(int(i))
+                    break
 
-        if (not done_flag_1) or (not done_flag_2):
-            print(f"\t\t[#]#[#] exec#{i} -> HANG")
-            break
+            if (not done_flag_1) or (not done_flag_2):
+                print(f"\t\t[#]#[#] exec#{i} -> HANG")
+                continue
 
 
     # ******* Printing the results *******
