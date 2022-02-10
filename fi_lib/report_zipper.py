@@ -130,11 +130,11 @@ def report_zipper_FreeRTOS():
             exception_cnt += int(report_lines[8].split(" ")[1])
             if DEBUG: print(f"exception cnt {exception_cnt}")
 
-            for i in range(10,17):
+            for i in range(9,len(report_lines)):
                 exc_text = report_lines[i].split(" ")[1]
+                if exc_text not in exceptions_total_dict.keys():
+                    exceptions_total_dict[exc_text] = 0
                 exceptions_total_dict[exc_text] += int(report_lines[i].split(" ")[3])
-
-
 
 
     # Printing summary

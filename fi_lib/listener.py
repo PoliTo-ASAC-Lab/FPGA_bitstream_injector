@@ -59,16 +59,16 @@ class Listener:
         self.run_async_listener(output_file)
         return
 
-    def do_listen(self, fp_outfile, listen_time = None, debug = True):
+    def do_listen(self, fp_outfile, listen_time = None, debug = False):
         self.clear_buffer()
         self.reset_state()
-
+        
         if self.wait_on_start:
-            tmp_byte_buffer = self.connection.read(64)
+            tmp_byte_buffer = self.connection.read(256)
             while not tmp_byte_buffer:
                 self.logger.info("LISTENER: nothing on serial... ")
                 time.sleep(0.5)
-                tmp_byte_buffer = self.connection.read(64)
+                tmp_byte_buffer = self.connection.read(256)
 
             tmp_decoded_buffer = tmp_byte_buffer.decode("utf-8")
 
@@ -87,7 +87,6 @@ class Listener:
             "DONE_2": False
         }
         completion_mark = False;
-
         while 1:
             completion_mark = True
             for keyword in completion_keywords.keys():
@@ -101,12 +100,8 @@ class Listener:
                 self.listener_state = 'completed'
                 break
 
-            if "Exception" in self.buffer:
-                self.listener_state = 'exception'
-                break
-
             print(time.time() - tic)
-            if time.time() - tic > self.application_timeout:
+            if time.time() - tic > self.application_timeout or time.time() - initial_tic > self.application_timeout:
                 self.listener_state = 'application_timeout'
                 break
 
@@ -114,8 +109,7 @@ class Listener:
                 self.listener_state = 'listened_enough'
                 break
 
-
-            tmp_byte_buffer = self.connection.read(32)
+            tmp_byte_buffer = self.connection.read(256)
             if tmp_byte_buffer:
                 tmp_decoded_buffer = tmp_byte_buffer.decode("utf-8",errors="replace")
                 self.buffer += tmp_decoded_buffer
@@ -124,6 +118,9 @@ class Listener:
                 if debug: print(f"LISTENER says\"{tmp_decoded_buffer}\"", end='')
                 #self.clear_buffer(keep_keyword_window_chars=False)
                 tic = time.time()
+
+
+
 
         self.clear_buffer()
         #print('', flush=True)

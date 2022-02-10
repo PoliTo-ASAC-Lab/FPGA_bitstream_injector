@@ -69,8 +69,22 @@ def bitflip_injection(golden_bitstream, injection_num):
     i=0
     for i in range(0, int(injection_num)):
 
-        # Selective Injection Coordinates
-        coordinates_are_good = False
+        ########## Selective Injection Coordinates - Method 1 ##########
+
+        ## Limits
+        x_low = 11828# in frames (== X-pixels in pbm image)
+        x_high = 11828+1004
+        y_low = 2016/8 # in bytes (== Y-pixels in pbm image/8)
+        y_high = words_per_frame * bytes_per_word
+
+        ## Injection
+        random_frame = random.randint(x_low,x_high)
+        random_byte = random.randint(y_low,y_high)
+        x_cord = start_byte + (starting_frame + random_frame) * words_per_frame * bytes_per_word
+        y_cord = random_byte
+
+        ########## Selective Injection Coordinates - Method 2 ##########
+        coordinates_are_good = True
         while (coordinates_are_good == False):
             coordinates_are_good = True
             random_frame = random.randint(0,total_frames)
@@ -80,26 +94,17 @@ def bitflip_injection(golden_bitstream, injection_num):
             y_cord = random_byte
 
             # negative constraints set 1
-            if((random_frame > 637 and random_frame < 5266) and (random_word > 0 and random_word < 60)):
+            if((random_frame < 11724 or random_frame > 13000) or (random_word < 50)):
                 coordinates_are_good = False            
 
             # negative constraints set 2
-            if(random_frame > 1266 and random_frame < 5266):
-                coordinates_are_good = False            
-
             # negative constraints set 3
-            if((random_frame > 6484 and random_frame < 10474)):
-                coordinates_are_good = False            
-            
             # negative constraints set 4
-            if(random_frame > 11715):
-                coordinates_are_good = False
-            
             # negative constraints set 5
             # negative constraints set 6
             # negative constraints set 7
         
-        #print(f"DEBUG.:|Injection#{i}: x={random_frame}th frame, y={random_byte}th word ")
+        print(f"DEBUG.:|Injection#{i}: x={random_frame}th frame, y={random_byte}th byte={(int)(random_byte/4)}th word")
 
 
 
@@ -143,9 +148,16 @@ def bitstream_analyzer(bitstream):
     #print(f"\n\nending --> {bitstream_content[end_byte:end_byte+16].hex()}") #_debug
     return start_byte, end_byte
 
+def getXSCT_pid(XSCTp, debug = True):
+    XSCTp.sendline('puts [pid] ; join [concat "XSCT_" "DONE"] ""')
+    XSCTp.expect('XSCT_DONE')
+    pid = (int)((XSCTp.before).splitlines()[-1])
+    if debug: print(pid)
+    return pid
+
 def XSCTcommunicate(child, command, debug=False):
     #!!!! child must be a wexpect.spawn object
-    xsct_prompt = ['XSCT_DONE', 'XSCT_ERROR']
+    xsct_prompt = ['XSCT_DONE', 'XSCT_ERROR', wexpect.TIMEOUT]
     child.sendline(command)
     if debug: 
         print(child.before)
@@ -157,14 +169,14 @@ def XSCTcommunicate(child, command, debug=False):
         print(f"\n\t\t\t XSCT replied: {xsct_prompt[xsct_reply_id]}")
         return True
 
-def FPGA_prog_and_exec(XSCTproc, app_listener, bitstream_file, HW_file, ELF_file, app_out_file, DEBUG=False):
+def FPGA_prog_and_exec(XSCTproc, app_listener, bitstream_file, ELF_file, app_out_file, DEBUG=False):
     
     if DEBUG: print("Exec1")
     if not XSCTcommunicate(XSCTproc, 'if { [catch {targets -set -nocase -filter {name =~ "*microblaze*#0" && bscan=="USER2"} }] } {join [concat "XSCT_" "ERROR"] ""} else { join [concat "XSCT_" "DONE"] ""}'): return False# selecting microblaze as target
     
     if DEBUG: time.sleep(2)
     if DEBUG: print("Exec2")
-    XSCTcommunicate(XSCTproc, 'rst -processor; join [concat "XSCT_" "DONE"] ""')#' puts "XSCT_DONE"') # reset of the system
+    XSCTcommunicate(XSCTproc, 'rst -processor; rst -system; rst -srst; join [concat "XSCT_" "DONE"] ""')#' puts "XSCT_DONE"') # reset of the system
 
     if DEBUG: time.sleep(2)
     XSCTcommunicate(XSCTproc, 'after 1000; join [concat "XSCT_" "DONE"] ""')
@@ -262,7 +274,7 @@ def functional_analysis(injection_num, report_filepath):
 
     out_file.close()
 
-def functional_analysis_FreeRTOS(injection_num, report_filepath, aborted_l):
+def functional_analysis_FreeRTOS(injection_num, report_filepath, aborted_l, r_seed):
     """
     Performs thr functional analysis by comparing the CRC32 hashes of file
     ./faulty_bitstreams/uB_results/golden_uB_result.dat
@@ -272,7 +284,7 @@ def functional_analysis_FreeRTOS(injection_num, report_filepath, aborted_l):
 
     """
     Output Classification:
-        1) Correct: execution ends with correct results
+        1) Correct: execution ends ("with correct results" NOT CHECKED YET)
         2) Hang: execution stops without exception occurrence
         3) Exception: execution stops with exception occurrence
             Example of exception signature: "---- Exception: XEXC_ID_FSL ----"
@@ -285,7 +297,7 @@ def functional_analysis_FreeRTOS(injection_num, report_filepath, aborted_l):
     faulty_l = [] 
     hang_process_cnt = 0
     hang_process_l = []
-    #aborted_l = []
+    #aborted_l = [] # PASSED VIA PARAMS
     aborted_cnt = len(aborted_l) 
     exceptions_dict = {
         "XEXC_ID_FSL" : 0,
@@ -300,7 +312,7 @@ def functional_analysis_FreeRTOS(injection_num, report_filepath, aborted_l):
     exception_process_l = []
     exception_cnt = 0
 
-    # Reading list of aborted injections (due to link failure or anything else)
+    # !!!! NOT USED !!!! Reading list of aborted injections (due to link failure or anything else)
     aborted_injections_file_path = "./faulty_bitstreams/uB_results/aborted.txt"
     if (path.exists(aborted_injections_file_path)):
         aborted_injections_file = open(aborted_injections_file_path, "r+")
@@ -334,6 +346,7 @@ def functional_analysis_FreeRTOS(injection_num, report_filepath, aborted_l):
             faulty_res_filename = f"./faulty_bitstreams/uB_results/uB_result_{i}.dat"
             done_flag_1 = False
             done_flag_2 = False
+            timeout_flag = False
             faulty_content = open(faulty_res_filename,"r+")
             for line in faulty_content.read().splitlines():
                 splitted_line = line.split()
@@ -348,6 +361,8 @@ def functional_analysis_FreeRTOS(injection_num, report_filepath, aborted_l):
                 # Example of exception signature: "---- Exception: XEXC_ID_FSL ----"
                 if "Exception:" in splitted_line:
                     exc_text = splitted_line[2]
+                    if exc_text not in exceptions_dict.keys():
+                        exceptions_dict[exc_text] = 0
                     exceptions_dict[exc_text] += 1
                     print(f"\t\t[#]#[#] exec#{i} -> EXCEPTION")
                     exception_cnt+=1
@@ -356,6 +371,9 @@ def functional_analysis_FreeRTOS(injection_num, report_filepath, aborted_l):
 
             if (not done_flag_1) or (not done_flag_2):
                 print(f"\t\t[#]#[#] exec#{i} -> HANG")
+                hang_process_cnt+=1
+                hang_process_l.append(int(i))
+                dump_strange_output(faulty_res_filename, i, r_seed)
                 continue
 
 
@@ -374,3 +392,14 @@ def functional_analysis_FreeRTOS(injection_num, report_filepath, aborted_l):
         out_file.write(f"\nException[ {exc_text} ]= {exceptions_dict[exc_text]}")
 
     out_file.close()
+
+def dump_strange_output(strange_output_filename, inj_num, seed):
+    strange_results_folder = "./fi_reports/strange_uB_results/"
+    print(f"\nfile to be dumped is: {strange_output_filename} and will be copied as {strange_results_folder}s{seed}_#{inj_num}.dat")
+    if  not path.exists(strange_results_folder):
+        os.mkdir(strange_results_folder)
+        print("\tCreated ./faulty_bitstreams/ !")
+
+    original = strange_output_filename.replace('/', '\\')
+    new = f"{strange_results_folder}s{seed}_#{inj_num}.dat".replace('/', '\\')
+    os.system(fr'copy "{original}" "{new}"')
