@@ -1,8 +1,9 @@
 # bitflip function [By Sarah Azimi]
 
-def bitflip(golden_number, bit_pos):
-    #print (f"number is:{bin(golden_number)} and bit position is:{bit_pos}")
-    if (golden_number >> bit_pos)%2 == 0:
+def bitflip(golden_number, bit_pos, inject_ones_only):
+    if ((golden_number >> bit_pos)%2 == 0):
+        if inject_ones_only:
+            return -1 #injection has to be repeated
     	# force to 1
         mask = 1 << bit_pos
         faulty_number = golden_number | mask

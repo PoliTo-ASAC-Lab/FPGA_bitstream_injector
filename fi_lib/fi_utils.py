@@ -54,6 +54,8 @@ def bitflip_injection(golden_bitstream, injection_num):
     ### Words per frame: 123
     ### Bytes per word: 4
 
+    inject_ones_only = True # flag to inject in bits equal to 1 only
+
     total_frames = 32530
     words_per_frame = 123
     bytes_per_word = 4
@@ -68,51 +70,53 @@ def bitflip_injection(golden_bitstream, injection_num):
     golden_file.close()
     i=0
     for i in range(0, int(injection_num)):
+        faulty_number = -1  
+        while faulty_number == -1: # (faulty_number != -1) --> injection is good
+            pass
+            ########## Selective Injection Coordinates - Method 1 ##########
 
-        ########## Selective Injection Coordinates - Method 1 ##########
+            ## Limits
+            x_low = 11828# in frames (== X-pixels in pbm image)
+            x_high = 11828+1004
+            y_low = 2016/8 # in bytes (== Y-pixels in pbm image/8)
+            y_high = words_per_frame * bytes_per_word
 
-        ## Limits
-        x_low = 11828# in frames (== X-pixels in pbm image)
-        x_high = 11828+1004
-        y_low = 2016/8 # in bytes (== Y-pixels in pbm image/8)
-        y_high = words_per_frame * bytes_per_word
-
-        ## Injection
-        random_frame = random.randint(x_low,x_high)
-        random_byte = random.randint(y_low,y_high)
-        x_cord = start_byte + (starting_frame + random_frame) * words_per_frame * bytes_per_word
-        y_cord = random_byte
-
-        ########## Selective Injection Coordinates - Method 2 ##########
-        coordinates_are_good = True
-        while (coordinates_are_good == False):
-            coordinates_are_good = True
-            random_frame = random.randint(0,total_frames)
-            random_byte = random.randint(0,words_per_frame*bytes_per_word)
-            random_word = random_byte/32
+            ## Injection
+            random_frame = random.randint(x_low,x_high)
+            random_byte = random.randint(y_low,y_high)
             x_cord = start_byte + (starting_frame + random_frame) * words_per_frame * bytes_per_word
             y_cord = random_byte
 
-            # negative constraints set 1
-            if((random_frame < 11724 or random_frame > 13000) or (random_word < 50)):
-                coordinates_are_good = False            
+            ########## Selective Injection Coordinates - Method 2 ##########
+            coordinates_are_good = True
+            while (coordinates_are_good == False):
+                coordinates_are_good = True
+                random_frame = random.randint(0,total_frames)
+                random_byte = random.randint(0,words_per_frame*bytes_per_word)
+                random_word = random_byte/32
+                x_cord = start_byte + (starting_frame + random_frame) * words_per_frame * bytes_per_word
+                y_cord = random_byte
 
-            # negative constraints set 2
-            # negative constraints set 3
-            # negative constraints set 4
-            # negative constraints set 5
-            # negative constraints set 6
-            # negative constraints set 7
-        
-        print(f"DEBUG.:|Injection#{i}: x={random_frame}th frame, y={random_byte}th byte={(int)(random_byte/4)}th word")
+                # negative constraints set 1
+                if((random_frame < 11724 or random_frame > 13000) or (random_word < 50)):
+                    coordinates_are_good = False            
 
+                # negative constraints set 2
+                # negative constraints set 3
+                # negative constraints set 4
+                # negative constraints set 5
+                # negative constraints set 6
+                # negative constraints set 7
+            
+            byte_cord = x_cord + y_cord
+            bit_cord = random.randint(0, 7)
 
+            number = golden_content[byte_cord]
+            faulty_number = bitflip(number, bit_cord, inject_ones_only)
+            
+        #print(f"DEBUG.:|Injection#{i}: x={random_frame}th frame, y={random_byte}th byte={(int)(random_byte/4)}th word")
+        #print (f"DEBUG.:|Injection#{i}: golden={bin(number)}; bit position={bit_cord}; faulty={bin(faulty_number)}")
 
-        byte_cord = x_cord + y_cord
-        bit_cord = random.randint(0, 7)
-
-        number = golden_content[byte_cord]
-        faulty_number = bitflip(number, bit_cord)
         faulty_bin_content = bytearray(golden_content)
         faulty_bin_content[byte_cord] = faulty_number
         faulty_bitstream = f"./faulty_bitstreams/inj_{i}.bit"

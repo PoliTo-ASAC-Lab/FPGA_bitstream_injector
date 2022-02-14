@@ -37,7 +37,7 @@ if __name__ == '__main__':
 
     ELF_file = "C:/Users/Daniele_LAB7/Documents/GitHub/FPGA_bitstream_injector/Testbed_02_app.elf"
     faulty_bits_BASE_DIR = "C:/Users/Daniele_LAB7/Documents/GitHub/FPGA_bitstream_injector/faulty_bitstreams"
-    injection_num = 50
+    injection_num = 2
     
     if (
         not path.exists(bitstream_file)
