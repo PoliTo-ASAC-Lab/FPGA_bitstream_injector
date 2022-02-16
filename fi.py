@@ -37,7 +37,7 @@ if __name__ == '__main__':
 
     ELF_file = "C:/Users/Daniele_LAB7/Documents/GitHub/FPGA_bitstream_injector/Testbed_02_app.elf"
     faulty_bits_BASE_DIR = "C:/Users/Daniele_LAB7/Documents/GitHub/FPGA_bitstream_injector/faulty_bitstreams"
-    injection_num = 2
+    injection_num = 50
     
     if (
         not path.exists(bitstream_file)
@@ -83,7 +83,7 @@ if __name__ == '__main__':
         app_out_faulty = f"./faulty_bitstreams/uB_results/uB_result_{i}.dat"
         if not FPGA_prog_and_exec(XSCTproc, app_listener, faulty_bitstream, ELF_file, app_out_faulty):
             print(F"ABORTED INJECTION")
-            for j in range(i,injection_num): aborted_l.append(i)
+            for j in range(i,injection_num): aborted_l.append(j)
             break # terminating the injection campaign, the remaining injections would fail
             
 

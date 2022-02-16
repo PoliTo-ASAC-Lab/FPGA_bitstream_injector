@@ -157,7 +157,7 @@ def report_zipper_FreeRTOS():
         summary.write(f"\nCorrect results -> {correct_results_total_cnt} [{correct_results_percentage}%]")
         
         faulty_results_percentage = round(100*faulty_results_total_cnt/injection_total_cnt,2)
-        summary.write(f"\nFaulty results -> {faulty_results_total_cnt} [{faulty_results_percentage}%]")        
+        summary.write(f"\nFaulty results(SDE) -> {faulty_results_total_cnt} [{faulty_results_percentage}%]")        
 
         hang_processes_percentage = round(100*hang_processes_total_cnt/injection_total_cnt,2)
         summary.write(f"\nMicroBlaze halted -> {hang_processes_total_cnt} [{hang_processes_percentage}%]")

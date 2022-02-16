@@ -170,7 +170,7 @@ def XSCTcommunicate(child, command, debug=False):
         print(f"Error occurred in XSCT while trying to execute:\n\t{command}")
         return False
     else:
-        print(f"\n\t\t\t XSCT replied: {xsct_prompt[xsct_reply_id]}")
+        print(f"\t\t\t XSCT replied: {xsct_prompt[xsct_reply_id]}")
         return True
 
 def FPGA_prog_and_exec(XSCTproc, app_listener, bitstream_file, ELF_file, app_out_file, DEBUG=False):
@@ -327,9 +327,11 @@ def functional_analysis_FreeRTOS(injection_num, report_filepath, aborted_l, r_se
                 aborted_l.append(int(proc_num))
 
             
-    # Checking completion (TBD: and correctness)
+    # Checking completion and correctness
     # Golden output
     gold_res_filename = f"./faulty_bitstreams/uB_results/golden_uB_result.dat"
+    golden_hash = CRC32_hash(gold_res_filename) # Computing golden hash
+
     done_flag_1 = False
     done_flag_2 = False
     golden_content = open(gold_res_filename,"r+")
@@ -348,6 +350,7 @@ def functional_analysis_FreeRTOS(injection_num, report_filepath, aborted_l, r_se
     for i in range(0,int(injection_num)):
         if i not in aborted_l:
             faulty_res_filename = f"./faulty_bitstreams/uB_results/uB_result_{i}.dat"
+
             done_flag_1 = False
             done_flag_2 = False
             timeout_flag = False
@@ -360,6 +363,13 @@ def functional_analysis_FreeRTOS(injection_num, report_filepath, aborted_l, r_se
                     done_flag_2 = True
                 if done_flag_1 and done_flag_2:
                     print(f"\t\t[#]#[#] exec#{i} -> OK")
+                    # Checking functional output for SDEs
+                    faulty_hash = CRC32_hash(faulty_res_filename)
+                    if faulty_hash != golden_hash:
+                            faulty_cnt += 1
+                            faulty_l.append(i)
+                            dump_SDE_output(faulty_res_filename, i, r_seed)
+                            print(f"\t\t\t\t[#]#[#] exec#{i} -> but SDE!")
                     break
                 
                 # Example of exception signature: "---- Exception: XEXC_ID_FSL ----"
@@ -377,7 +387,7 @@ def functional_analysis_FreeRTOS(injection_num, report_filepath, aborted_l, r_se
                 print(f"\t\t[#]#[#] exec#{i} -> HANG")
                 hang_process_cnt+=1
                 hang_process_l.append(int(i))
-                dump_strange_output(faulty_res_filename, i, r_seed)
+                dump_hang_output(faulty_res_filename, i, r_seed)
                 continue
 
 
@@ -387,7 +397,7 @@ def functional_analysis_FreeRTOS(injection_num, report_filepath, aborted_l, r_se
     out_file.write(f"\nperformed_injections= {injection_num-aborted_cnt}")    
     out_file.write(f"\n\t[aborted_injections= {aborted_cnt}]")
     out_file.write(f"\ncorrect_results= {injection_num -aborted_cnt -faulty_cnt -hang_process_cnt -exception_cnt}")    
-    out_file.write(f"\nfaulty_results= {faulty_cnt}")
+    out_file.write(f"\nfaulty_results(SDE)= {faulty_cnt}")
     out_file.write(f"\nfaulty_results_bitstreams= {faulty_l}")    
     out_file.write(f"\nhang_processes= {hang_process_cnt}")
     out_file.write(f"\nhang_processes_bitstreams= {hang_process_l}")
@@ -397,13 +407,24 @@ def functional_analysis_FreeRTOS(injection_num, report_filepath, aborted_l, r_se
 
     out_file.close()
 
-def dump_strange_output(strange_output_filename, inj_num, seed):
-    strange_results_folder = "./fi_reports/strange_uB_results/"
-    print(f"\nfile to be dumped is: {strange_output_filename} and will be copied as {strange_results_folder}s{seed}_#{inj_num}.dat")
-    if  not path.exists(strange_results_folder):
-        os.mkdir(strange_results_folder)
-        print("\tCreated ./faulty_bitstreams/ !")
+def dump_hang_output(hang_output_filename, inj_num, seed):
+    hang_results_folder = "./fi_reports/hang_uB_results/"
+    print(f"\nfile to be dumped is: {hang_output_filename} and will be copied as {hang_results_folder}s{seed}_#{inj_num}.dat")
+    if  not path.exists(hang_results_folder):
+        os.mkdir(hang_results_folder)
+        print("\tCreated ./fi_reports/hang_uB_results/ !")
 
-    original = strange_output_filename.replace('/', '\\')
-    new = f"{strange_results_folder}s{seed}_#{inj_num}.dat".replace('/', '\\')
+    original = hang_output_filename.replace('/', '\\')
+    new = f"{hang_results_folder}s{seed}_#{inj_num}_HANG.dat".replace('/', '\\')
+    os.system(fr'copy "{original}" "{new}"')
+
+def dump_SDE_output(SDE_output_filename, inj_num, seed):
+    SDE_results_folder = "./fi_reports/SDE_uB_results/"
+    print(f"\nfile to be dumped is: {SDE_output_filename} and will be copied as {SDE_results_folder}s{seed}_#{inj_num}.dat")
+    if  not path.exists(SDE_results_folder):
+        os.mkdir(SDE_results_folder)
+        print("\tCreated ./fi_reports/SDE_uB_results/ !")
+
+    original = SDE_output_filename.replace('/', '\\')
+    new = f"{SDE_results_folder}s{seed}_#{inj_num}_SDE.dat".replace('/', '\\')
     os.system(fr'copy "{original}" "{new}"')
